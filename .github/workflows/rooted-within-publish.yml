@@ -1,0 +1,38 @@
+name: Rooted Within — publish to Instagram
+
+# 04:30 UTC = 12.30pm Malaysia, the top of the feed window.
+# GitHub's scheduler can lag a few minutes under load; fine for a one-hour window.
+# Malaysia has no daylight saving, so this never needs adjusting.
+on:
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate only — do not publish'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ig-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Publish the day's flyer
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          PUBLIC_BASE_URL: ${{ vars.PUBLIC_BASE_URL }}
+          GRAPH_VERSION: ${{ vars.GRAPH_VERSION || 'v23.0' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: node scripts/publish-instagram.mjs
