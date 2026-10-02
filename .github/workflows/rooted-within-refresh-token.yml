@@ -1,0 +1,41 @@
+name: Rooted Within — refresh Instagram token
+
+# Instagram long-lived tokens last 60 days. An unrefreshed one expires silently and
+# the first you'd know is a failed post. This refreshes weekly and writes the new
+# value straight back into the repo secret, so it never reaches the cliff.
+#
+# Needs a fine-grained PAT stored as the secret GH_SECRETS_PAT, scoped to THIS repo
+# with "Secrets: Read and write". Nothing else.
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refresh the long-lived token and store it
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+        run: |
+          set -euo pipefail
+
+          resp=$(curl -sS -G https://graph.instagram.com/refresh_access_token \
+            --data-urlencode "grant_type=ig_refresh_token" \
+            --data-urlencode "access_token=${IG_ACCESS_TOKEN}")
+
+          new_token=$(echo "$resp" | jq -r '.access_token // empty')
+          expires=$(echo "$resp" | jq -r '.expires_in // empty')
+
+          if [ -z "$new_token" ]; then
+            echo "Refresh failed. Response:"
+            echo "$resp"
+            echo "Re-mint the token in the Meta app dashboard and update the IG_ACCESS_TOKEN secret by hand."
+            exit 1
+          fi
+
+          echo "Refreshed. Valid for about $(( expires / 86400 )) more days."
+          echo -n "$new_token" | gh secret set IG_ACCESS_TOKEN --repo "$GITHUB_REPOSITORY"
